@@ -68,7 +68,10 @@ fi
 
 tar -C "$TMP_DIR" -xzf "${TMP_DIR}/${ARCHIVE}"
 mkdir -p "$INSTALL_DIR"
-install -m 755 "${TMP_DIR}/agy-statusline" "${INSTALL_DIR}/agy-statusline"
+TMP_TARGET="${INSTALL_DIR}/.agy-statusline.tmp.$$"
+cp -f "${TMP_DIR}/agy-statusline" "$TMP_TARGET"
+chmod 755 "$TMP_TARGET"
+mv -f "$TMP_TARGET" "${INSTALL_DIR}/agy-statusline"
 
 echo "✓ Installed ${INSTALL_DIR}/agy-statusline"
 case ":${PATH}:" in

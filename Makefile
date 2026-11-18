@@ -1,4 +1,4 @@
-VERSION ?= 0.1.0
+VERSION ?= 0.1.1
 BUILD_ID ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 GOCACHE ?= /tmp/agy-statusline-go-cache
 TARGET_DIR ?= $(HOME)/.local/bin
@@ -23,9 +23,9 @@ build:
 	GOCACHE=$(GOCACHE) go build -trimpath -ldflags "$(LDFLAGS)" -o agy-statusline ./cmd/agy-statusline
 
 install: build
-	mkdir -p "$(TARGET_DIR)"
-	install -m 755 ./agy-statusline "$(TARGET_DIR)/agy-statusline"
-	rm -f ./agy-statusline
+	@mkdir -p "$(TARGET_DIR)"
+	@set -e; tmp="$(TARGET_DIR)/.agy-statusline.tmp.$$$$"; cp -f ./agy-statusline "$$tmp"; chmod 755 "$$tmp"; mv -f "$$tmp" "$(TARGET_DIR)/agy-statusline"
+	@rm -f ./agy-statusline
 	@"$(TARGET_DIR)/agy-statusline" version
 
 enable: install

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -19,11 +20,101 @@ type StatusLineSettings struct {
 }
 
 type SettingsReport struct {
-	Path        string
-	Exists      bool
-	Valid       bool
-	ColorScheme string
-	StatusLine  StatusLineSettings
+	Path             string
+	Exists           bool
+	Valid            bool
+	ColorScheme      string
+	StatusLine       StatusLineSettings
+	FailOpenGuard    bool
+	CompatShimPath   string
+	CompatShimTarget string
+}
+
+// BuildStatusLineCommand wraps binPath in a POSIX/Windows guard so missing or
+// moving binaries exit 0 cleanly instead of tripping agy's exit-127 banner and
+// 30-failure auto-disable.
+func BuildStatusLineCommand(binPath, goos string) string {
+	binPath = strings.TrimSpace(binPath)
+	if binPath == "" {
+		return ""
+	}
+	if goos == "windows" {
+		return fmt.Sprintf("if exist %q (%q) else (exit /b 0)", binPath, binPath)
+	}
+	sq := "'" + strings.ReplaceAll(binPath, "'", `'\''`) + "'"
+	return fmt.Sprintf(
+		"if [ -x %s ]; then exec %s; elif command -v agy-statusline >/dev/null 2>&1; then exec agy-statusline; else exit 0; fi",
+		sq, sq,
+	)
+}
+
+// IsFailOpenCommand reports whether cmd includes a zero-exit fallback when missing.
+func IsFailOpenCommand(cmd string) bool {
+	return strings.Contains(cmd, "else exit 0") ||
+		strings.Contains(cmd, "|| exit 0") ||
+		strings.Contains(cmd, "|| true") ||
+		strings.Contains(cmd, "exit /b 0")
+}
+
+// CompatShimPath returns the legacy ~/.gemini/antigravity-cli/bin/agy-statusline
+// symlink path when settingsPath lives in an antigravity-cli directory.
+func CompatShimPath(settingsPath, goos string) string {
+	if strings.TrimSpace(settingsPath) == "" {
+		return ""
+	}
+	dir := filepath.Dir(filepath.Clean(settingsPath))
+	if filepath.Base(dir) != "antigravity-cli" {
+		return ""
+	}
+	name := "agy-statusline"
+	if goos == "windows" {
+		name = "agy-statusline.exe"
+	}
+	return filepath.Join(dir, "bin", name)
+}
+
+// EnsureCompatShim atomically creates or updates the compatibility symlink next
+// to settingsPath so long-lived agy processes still caching the legacy path can
+// execute agy-statusline cleanly without restarting.
+func EnsureCompatShim(settingsPath, binPath, goos string) (string, error) {
+	if goos == "windows" {
+		return "", nil
+	}
+	binPath = strings.TrimSpace(binPath)
+	if binPath == "" {
+		return "", nil
+	}
+	shim := CompatShimPath(settingsPath, goos)
+	if shim == "" || filepath.Clean(shim) == filepath.Clean(binPath) {
+		return "", nil
+	}
+	st, err := os.Stat(binPath)
+	if err != nil || st.IsDir() {
+		return "", nil
+	}
+	if err := os.MkdirAll(filepath.Dir(shim), 0o755); err != nil {
+		return "", err
+	}
+	tmp := fmt.Sprintf("%s.tmp.%d", shim, os.Getpid())
+	_ = os.Remove(tmp)
+	if err := os.Symlink(binPath, tmp); err != nil {
+		return "", err
+	}
+	if err := os.Rename(tmp, shim); err != nil {
+		_ = os.Remove(tmp)
+		return "", err
+	}
+	return shim, nil
+}
+
+func removeCompatShim(settingsPath, goos string) {
+	shim := CompatShimPath(settingsPath, goos)
+	if shim == "" {
+		return
+	}
+	if fi, err := os.Lstat(shim); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		_ = os.Remove(shim)
+	}
 }
 
 // DefaultSettingsPath returns the path to Antigravity CLI's settings.json.
@@ -46,12 +137,20 @@ func DefaultSettingsPath(getenv func(string) string) string {
 	return filepath.Join(home, ".gemini", "antigravity-cli", "settings.json")
 }
 
-// InstallSettings updates only the "statusLine" block in settingsPath while preserving all other keys.
+// InstallSettings updates only the "statusLine" block in settingsPath with the
+// fail-open shell guard while preserving all other keys.
 func InstallSettings(settingsPath, binPath string, stackWithDefault bool) error {
+	return InstallSettingsWithOptions(settingsPath, binPath, stackWithDefault, false, runtime.GOOS)
+}
+
+// InstallSettingsWithOptions updates only the "statusLine" block in settingsPath
+// while preserving all other keys, optionally wrapping command with a fail-open guard.
+func InstallSettingsWithOptions(settingsPath, binPath string, stackWithDefault, rawCommand bool, goos string) error {
 	if strings.TrimSpace(settingsPath) == "" {
 		return errors.New("settings path cannot be empty")
 	}
-	if strings.TrimSpace(binPath) == "" {
+	cleanBin := strings.TrimSpace(binPath)
+	if cleanBin == "" {
 		return errors.New("binary path cannot be empty")
 	}
 
@@ -60,10 +159,15 @@ func InstallSettings(settingsPath, binPath string, stackWithDefault bool) error 
 		return err
 	}
 
+	cmd := cleanBin
+	if !rawCommand {
+		cmd = BuildStatusLineCommand(cleanBin, goos)
+	}
+
 	enabled := true
 	sl := StatusLineSettings{
 		Type:             "command",
-		Command:          binPath,
+		Command:          cmd,
 		Enabled:          &enabled,
 		StackWithDefault: stackWithDefault,
 	}
@@ -72,7 +176,11 @@ func InstallSettings(settingsPath, binPath string, stackWithDefault bool) error 
 		return err
 	}
 	root["statusLine"] = rawSL
-	return writeSettingsMapAtomic(settingsPath, root)
+	if err := writeSettingsMapAtomic(settingsPath, root); err != nil {
+		return err
+	}
+	_, _ = EnsureCompatShim(settingsPath, cleanBin, goos)
+	return nil
 }
 
 // UninstallSettings resets only the "statusLine" block in settingsPath while preserving all other keys.
@@ -100,12 +208,26 @@ func UninstallSettings(settingsPath string) (bool, error) {
 		return false, err
 	}
 	root["statusLine"] = rawSL
-	return true, writeSettingsMapAtomic(settingsPath, root)
+	if err := writeSettingsMapAtomic(settingsPath, root); err != nil {
+		return false, err
+	}
+	removeCompatShim(settingsPath, runtime.GOOS)
+	return true, nil
 }
 
 // InspectSettings reads settingsPath without modifying it.
 func InspectSettings(settingsPath string) SettingsReport {
 	rep := SettingsReport{Path: settingsPath}
+	if shim := CompatShimPath(settingsPath, runtime.GOOS); shim != "" {
+		if fi, err := os.Lstat(shim); err == nil {
+			rep.CompatShimPath = shim
+			if fi.Mode()&os.ModeSymlink != 0 {
+				if target, rerr := os.Readlink(shim); rerr == nil {
+					rep.CompatShimTarget = target
+				}
+			}
+		}
+	}
 	raw, err := os.ReadFile(settingsPath)
 	if err != nil {
 		return rep
@@ -125,6 +247,7 @@ func InspectSettings(settingsPath string) SettingsReport {
 	rep.Valid = true
 	rep.ColorScheme = doc.ColorScheme
 	rep.StatusLine = doc.StatusLine
+	rep.FailOpenGuard = IsFailOpenCommand(doc.StatusLine.Command)
 	return rep
 }
 

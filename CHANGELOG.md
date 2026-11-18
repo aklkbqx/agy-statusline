@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1] - 2026-11-19
+
+### Fixed
+- **Fail-open statusline guard (`exit status 127` prevention)**: `agy-statusline install` now wraps the `statusLine.command` entry in a POSIX/Windows shell check that falls back to `PATH` and exits `0` cleanly when the binary is absent, preventing `agy`'s 30-failure auto-disable banner (`--raw-command` restores a bare path).
+- **Compatibility symlink**: When installing into `~/.gemini/antigravity-cli/settings.json`, `agy-statusline` maintains an atomic compatibility symlink at `~/.gemini/antigravity-cli/bin/agy-statusline` (removed cleanly on `uninstall`) without disturbing sibling files such as `agentapi`, so long-lived open `agy` sessions recover without restarting.
+- **Atomic binary replacement**: `Makefile install` and `install.sh` now stage into a temporary file inside the destination directory and rename atomically (`mv -f`) so concurrent 300ms statusline polls never race a deleted binary.
+
 ## v0.1.0 (2026-11-18)
 
 ### Features

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -75,6 +76,7 @@ func cmdInstall(args []string, stdout, stderr io.Writer, getenv func(string) str
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	replace := fs.Bool("replace", false, "Replace agy's built-in status line instead of stacking below it")
+	rawCommand := fs.Bool("raw-command", false, "Write bare binary path instead of fail-open shell guard")
 	settingsFlag := fs.String("settings", "", "Override path to Antigravity CLI settings.json")
 	binFlag := fs.String("bin", "", "Override executable path recorded in settings.json")
 	if err := fs.Parse(args); err != nil {
@@ -97,9 +99,15 @@ func cmdInstall(args []string, stdout, stderr io.Writer, getenv func(string) str
 	}
 
 	stackWithDefault := !*replace
-	if err := InstallSettings(settingsPath, binPath, stackWithDefault); err != nil {
+	if err := InstallSettingsWithOptions(settingsPath, binPath, stackWithDefault, *rawCommand, runtime.GOOS); err != nil {
 		fmt.Fprintf(stderr, "agy-statusline install: %v\n", err)
 		return 1
+	}
+
+	rep := InspectSettings(settingsPath)
+	guardLabel := "fail-open (exit 0 fallback)"
+	if !rep.FailOpenGuard {
+		guardLabel = "raw"
 	}
 
 	mode := "stacked below built-in statusLine"
@@ -107,10 +115,19 @@ func cmdInstall(args []string, stdout, stderr io.Writer, getenv func(string) str
 		mode = "replacing built-in statusLine"
 	}
 	fmt.Fprintf(stdout, "✓ Updated %s\n", settingsPath)
-	fmt.Fprintf(stdout, "  command : %s\n", binPath)
+	fmt.Fprintf(stdout, "  binary  : %s\n", binPath)
+	fmt.Fprintf(stdout, "  guard   : %s\n", guardLabel)
+	fmt.Fprintf(stdout, "  command : %s\n", rep.StatusLine.Command)
+	if rep.CompatShimPath != "" {
+		target := rep.CompatShimTarget
+		if target == "" {
+			target = "(present)"
+		}
+		fmt.Fprintf(stdout, "  compat  : %s -> %s\n", rep.CompatShimPath, target)
+	}
 	fmt.Fprintf(stdout, "  mode    : %s (stack_with_default=%v)\n\n", mode, stackWithDefault)
 	fmt.Fprintln(stdout, hud.RenderDemo(resolveDemoWidth(120, getenv), "idle", hud.ResolveThemeName("", getenv), false, time.Now().UTC(), getenv))
-	fmt.Fprintln(stdout, "\nRestart any open 'agy' session (or start a new one) if the updated bar does not appear immediately.")
+	fmt.Fprintln(stdout, "\nIf an older open 'agy' window previously disabled its statusline, run '/statusline on' there (or restart agy).")
 	return 0
 }
 
@@ -180,9 +197,20 @@ func cmdDoctor(args []string, stdout, stderr io.Writer, version, buildID string,
 		fmt.Fprintf(stdout, "  settings    : INVALID JSON (%s)\n", rep.Path)
 	} else {
 		enabled := rep.StatusLine.Enabled == nil || *rep.StatusLine.Enabled
+		guardLabel := "raw"
+		if rep.FailOpenGuard {
+			guardLabel = "fail-open (exit 0 fallback)"
+		}
 		fmt.Fprintf(stdout, "  settings    : valid (%s)\n", rep.Path)
-		fmt.Fprintf(stdout, "  statusLine  : type=%q enabled=%v stack_with_default=%v command=%q\n",
-			rep.StatusLine.Type, enabled, rep.StatusLine.StackWithDefault, rep.StatusLine.Command)
+		fmt.Fprintf(stdout, "  statusLine  : type=%q enabled=%v stack_with_default=%v guard=%s command=%q\n",
+			rep.StatusLine.Type, enabled, rep.StatusLine.StackWithDefault, guardLabel, rep.StatusLine.Command)
+	}
+	if rep.CompatShimPath != "" {
+		target := rep.CompatShimTarget
+		if target == "" {
+			target = "(regular file)"
+		}
+		fmt.Fprintf(stdout, "  compat shim : %s -> %s\n", rep.CompatShimPath, target)
 	}
 
 	if agyPath != "" {
@@ -306,6 +334,7 @@ Usage:
 
 Install flags:
   --replace                       Replace agy's built-in bar (stack_with_default=false)
+  --raw-command                   Write bare binary path instead of fail-open shell guard
   --settings <path>               Custom settings.json path
   --bin <path>                    Custom executable path to record
 `, version)

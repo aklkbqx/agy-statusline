@@ -137,6 +137,11 @@ agy-statusline themes       # Preview all built-in palettes
 agy-statusline version      # Print version and build metadata
 ```
 
+## Troubleshooting
+
+- **Older open `agy` panes still show `exit status 127` / auto-disabled**: Long-lived `agy` sessions cache `settings.json`'s `statusLine.command` in memory at startup. Run `agy-statusline install` (which creates the fail-open command guard and a compatibility symlink at `~/.gemini/antigravity-cli/bin/agy-statusline` without touching `agentapi`), then type `/statusline on` once in any pane that had already auto-disabled after 30 failures.
+- **Re-installing while `agy` is open**: `make install` and `install.sh` replace binaries atomically (`mv -f`), avoiding transient `ENOENT` or macOS code-signature races during 300ms statusline polls.
+
 ## Security and privacy
 
 - **Zero network calls & zero telemetry**: Never opens sockets or sends analytics.
