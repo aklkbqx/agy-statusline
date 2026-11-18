@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 430" width="920" height="430" role="img" aria-label="agy-statusline adaptive 2-row cockpit HUD showcase">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0e1017"/>
+      <stop offset="100%" stop-color="#090a0e"/>
+    </linearGradient>
+    <linearGradient id="shimmerGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7dcfff"/>
+      <stop offset="50%" stop-color="#7aa2f7"/>
+      <stop offset="100%" stop-color="#bb9af7"/>
+    </linearGradient>
+    <style>
+      .mono { font-family: "JetBrains Mono", "SF Mono", "Fira Code", Menlo, Consolas, monospace; font-size: 12.5px; }
+      .lbl  { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; fill: #565f89; }
+      .title { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; font-size: 12px; font-weight: 500; fill: #787c99; }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+      @keyframes shimmer { 0%, 100% { opacity: 1; } 50% { opacity: 0.72; } }
+      .pulse { animation: pulse 1.3s ease-in-out infinite; }
+      .shimmer { animation: shimmer 1.6s ease-in-out infinite; }
+    </style>
+  </defs>
+
+  <!-- Outer Card -->
+  <rect x="0.5" y="0.5" width="919" height="429" rx="14" fill="url(#bgGrad)" stroke="#1f2335"/>
+
+  <!-- Window Titlebar -->
+  <rect x="1" y="1" width="918" height="36" rx="13" fill="#13151e"/>
+  <rect x="1" y="24" width="918" height="13" fill="#13151e"/>
+  <line x1="1" y1="37" x2="919" y2="37" stroke="#1e2233"/>
+  <circle cx="22" cy="19" r="5.5" fill="#f7768e"/>
+  <circle cx="40" cy="19" r="5.5" fill="#e0af68"/>
+  <circle cx="58" cy="19" r="5.5" fill="#73daca"/>
+  <text x="460" y="23" text-anchor="middle" class="title">agy-statusline — Google Antigravity CLI Cockpit HUD</text>
+
+  <!-- Section 1: 142-col Full 2-Row Cockpit (Idle + Low Quota Alert) -->
+  <text x="24" y="64" class="lbl">142 COLS · FULL 2-ROW COCKPIT + MULTI-ACCOUNT FLEET DECK</text>
+  <rect x="24" y="74" width="872" height="92" rx="8" fill="#0c0d10" stroke="#1b1f2e"/>
+  <line x1="36" y1="90" x2="884" y2="90" stroke="#24293d" stroke-width="1"/>
+  <text x="884" y="108" text-anchor="end" class="mono">
+    <tspan fill="#ff9e64" font-weight="700">auto</tspan>
+    <tspan fill="#565f89"> · </tspan>
+    <tspan fill="#c0caf5">Orchestrator (Carbon)</tspan>
+  </text>
+
+  <!-- Row 1 Left -->
+  <rect x="36" y="117" width="145" height="20" rx="4" fill="#1a1f30"/>
+  <text x="43" y="131" class="mono">
+    <tspan fill="#ff9e64">⬢ </tspan>
+    <tspan fill="#c0caf5" font-weight="700">Studio Ultra</tspan>
+    <tspan fill="#565f89"> · </tspan>
+    <tspan fill="#bb9af7" font-weight="700">ULTRA</tspan>
+  </text>
+  <text x="192" y="131" class="mono">
+    <tspan fill="#787c99">GEM </tspan>
+    <tspan fill="#565f89">5h </tspan>
+    <tspan fill="#f7768e">╸</tspan><tspan fill="#343b54">─────</tspan>
+    <tspan fill="#f7768e" font-weight="700" class="pulse"> ●</tspan><tspan fill="#f7768e" font-weight="700">9%</tspan>
+    <tspan fill="#565f89"> ↻2h04m · 7d </tspan>
+    <tspan fill="#e0af68">━━</tspan><tspan fill="#343b54">──</tspan>
+    <tspan fill="#e0af68"> 47%</tspan>
+    <tspan fill="#565f89"> · 3P </tspan><tspan fill="#787c99">100%</tspan>
+    <tspan fill="#787c99">  CTX </tspan>
+    <tspan fill="#7aa2f7">━╸</tspan><tspan fill="#343b54">────</tspan>
+    <tspan fill="#7aa2f7"> 28%</tspan>
+    <tspan fill="#565f89"> 254k/1M</tspan>
+    <tspan fill="#73daca"> ⌁84%</tspan>
+  </text>
+  <!-- Row 1 Right -->
+  <text x="884" y="131" text-anchor="end" class="mono">
+    <tspan fill="#565f89">⌂ </tspan><tspan fill="#7dcfff">agy-swap</tspan>
+    <tspan fill="#565f89"> · ⎇ </tspan><tspan fill="#bb9af7">main</tspan>
+    <tspan fill="#73daca"> +1</tspan><tspan fill="#e0af68"> ~2</tspan>
+    <tspan fill="#565f89"> · </tspan><tspan fill="#787c99">$0.42</tspan>
+  </text>
+
+  <!-- Row 2 Fleet Deck -->
+  <rect x="36" y="141" width="145" height="19" rx="4" fill="#132624"/>
+  <text x="43" y="154" class="mono">
+    <tspan fill="#73daca" font-weight="700" class="pulse">⇄</tspan>
+    <tspan fill="#c0caf5" font-weight="700"> Dev Pro </tspan>
+    <tspan fill="#73daca">━━━ 100%</tspan>
+  </text>
+  <rect x="187" y="141" width="132" height="19" rx="4" fill="#141722"/>
+  <text x="194" y="154" class="mono">
+    <tspan fill="#73daca">● </tspan><tspan fill="#c0caf5">Ship Pro </tspan><tspan fill="#73daca">━━━ 100%</tspan>
+  </text>
+  <rect x="325" y="141" width="130" height="19" rx="4" fill="#141722"/>
+  <text x="332" y="154" class="mono">
+    <tspan fill="#73daca">● </tspan><tspan fill="#c0caf5">Build Pro </tspan><tspan fill="#73daca">━━╸ 95%</tspan>
+  </text>
+  <rect x="461" y="141" width="194" height="19" rx="4" fill="#141722"/>
+  <text x="468" y="154" class="mono">
+    <tspan fill="#e0af68">◐ </tspan><tspan fill="#787c99">Lab Ultra </tspan><tspan fill="#e0af68">◷2d21h</tspan>
+    <tspan fill="#565f89"> · </tspan><tspan fill="#73daca">3P 100%</tspan>
+  </text>
+  <rect x="698" y="141" width="186" height="19" rx="4" fill="#132624"/>
+  <text x="877" y="154" text-anchor="end" class="mono">
+    <tspan fill="#73daca" font-weight="700" class="pulse">⇄</tspan>
+    <tspan fill="#73daca" font-weight="700"> SWAP READY </tspan>
+    <tspan fill="#565f89">▸ </tspan>
+    <tspan fill="#c0caf5" font-weight="700">Dev Pro</tspan>
+    <tspan fill="#787c99"> (3/4)</tspan>
+  </text>
+
+  <!-- Section 2: Active Turn Animation -->
+  <text x="24" y="196" class="lbl">ACTIVE TURN · BRAILLE SPINNER + RGB SHIMMER + LIVE DELTA + SUBAGENT EQUALIZER</text>
+  <rect x="24" y="206" width="872" height="82" rx="8" fill="#0c0d10" stroke="#1b1f2e"/>
+  <text x="884" y="226" text-anchor="end" class="mono">
+    <tspan fill="#ff9e64" font-weight="700">auto</tspan>
+    <tspan fill="#565f89"> · </tspan>
+    <tspan fill="#c0caf5">Orchestrator (Carbon)</tspan>
+  </text>
+  <rect x="36" y="236" width="174" height="20" rx="4" fill="#1c2844"/>
+  <text x="43" y="250" class="mono">
+    <tspan fill="#7dcfff" font-weight="700">⠹ </tspan>
+    <tspan fill="#c0caf5" font-weight="700">Studio Ultra</tspan>
+    <tspan fill="#565f89"> · </tspan>
+    <tspan fill="url(#shimmerGrad)" font-weight="700" class="shimmer">THINKING</tspan>
+  </text>
+  <text x="221" y="250" class="mono">
+    <tspan fill="#787c99">GEM </tspan><tspan fill="#565f89">5h </tspan>
+    <tspan fill="#73daca">━━━━╸</tspan><tspan fill="#9ef0e0" font-weight="700">─</tspan>
+    <tspan fill="#73daca"> 79%</tspan><tspan fill="#565f89"> ↻38m · 7d </tspan>
+    <tspan fill="#73daca">━━━╸</tspan><tspan fill="#73daca"> 93%</tspan>
+    <tspan fill="#565f89"> · 3P </tspan><tspan fill="#787c99">99%</tspan>
+    <tspan fill="#787c99">  CTX </tspan><tspan fill="#7aa2f7">━━</tspan><tspan fill="#b4dcff" font-weight="700">╸</tspan><tspan fill="#343b54">───</tspan>
+    <tspan fill="#7aa2f7"> 32%</tspan>
+    <tspan fill="#7dcfff"> +15k</tspan>
+    <tspan fill="#73daca"> ⌁86%</tspan>
+  </text>
+  <text x="884" y="250" text-anchor="end" class="mono">
+    <tspan fill="#565f89">⎇ </tspan><tspan fill="#bb9af7">main</tspan>
+    <tspan fill="#565f89"> · </tspan><tspan fill="#bb9af7">◈2</tspan><tspan fill="#7dcfff"> ▃▅▇</tspan>
+    <tspan fill="#565f89"> · </tspan><tspan fill="#7dcfff">◷1</tspan>
+  </text>
+  <rect x="36" y="261" width="129" height="19" rx="4" fill="#141722"/>
+  <text x="43" y="274" class="mono"><tspan fill="#73daca">● </tspan><tspan fill="#c0caf5">Dev Pro </tspan><tspan fill="#73daca">━━━ 100%</tspan></text>
+  <rect x="171" y="261" width="132" height="19" rx="4" fill="#141722"/>
+  <text x="178" y="274" class="mono"><tspan fill="#73daca">● </tspan><tspan fill="#c0caf5">Ship Pro </tspan><tspan fill="#73daca">━━━ 100%</tspan></text>
+  <rect x="309" y="261" width="130" height="19" rx="4" fill="#141722"/>
+  <text x="316" y="274" class="mono"><tspan fill="#73daca">● </tspan><tspan fill="#c0caf5">Build Pro </tspan><tspan fill="#73daca">━━╸ 95%</tspan></text>
+  <rect x="445" y="261" width="194" height="19" rx="4" fill="#141722"/>
+  <text x="452" y="274" class="mono"><tspan fill="#e0af68">◐ </tspan><tspan fill="#787c99">Lab Ultra </tspan><tspan fill="#e0af68">◷2d21h</tspan><tspan fill="#565f89"> · </tspan><tspan fill="#73daca">3P 99%</tspan></text>
+  <text x="884" y="274" text-anchor="end" class="mono">
+    <tspan fill="#787c99">FLEET 3/4 </tspan><tspan fill="#73daca">READY</tspan>
+    <tspan fill="#565f89"> · next ▸ </tspan><tspan fill="#c0caf5">Dev Pro</tspan>
+  </text>
+
+  <!-- Section 3: Responsive Split Panes (96 cols & 52 cols) -->
+  <text x="24" y="318" class="lbl">RESPONSIVE DEGRADATION · 92 COLS &amp; 52 COLS SPLIT PANE</text>
+  <rect x="24" y="328" width="530" height="74" rx="8" fill="#0c0d10" stroke="#1b1f2e"/>
+  <text x="36" y="346" class="mono"><tspan fill="#565f89">92 cols</tspan></text>
+  <text x="542" y="346" text-anchor="end" class="mono"><tspan fill="#ff9e64">auto</tspan><tspan fill="#565f89"> · </tspan><tspan fill="#c0caf5">Carbon</tspan></text>
+  <rect x="36" y="355" width="90" height="18" rx="4" fill="#1a1f30"/>
+  <text x="42" y="368" class="mono"><tspan fill="#ff9e64">⬢ </tspan><tspan fill="#c0caf5" font-weight="700">Studio U.</tspan></text>
+  <text x="134" y="368" class="mono">
+    <tspan fill="#787c99">Gem </tspan><tspan fill="#f7768e">╸───</tspan><tspan fill="#f7768e" font-weight="700"> ●9%</tspan>
+    <tspan fill="#565f89"> ↻2h04m · 7d </tspan><tspan fill="#e0af68">47%</tspan>
+    <tspan fill="#787c99">  CTX </tspan><tspan fill="#7aa2f7">━───</tspan><tspan fill="#7aa2f7"> 28%</tspan>
+  </text>
+  <text x="542" y="368" text-anchor="end" class="mono"><tspan fill="#565f89">⎇ </tspan><tspan fill="#bb9af7">main</tspan></text>
+  <text x="36" y="390" class="mono">
+    <tspan fill="#73daca" font-weight="700">⇄ Dev Pro 100% </tspan>
+    <tspan fill="#73daca">● </tspan><tspan fill="#c0caf5">Ship 100% </tspan>
+    <tspan fill="#73daca">● </tspan><tspan fill="#c0caf5">Build 95% </tspan>
+    <tspan fill="#e0af68">◐ </tspan><tspan fill="#787c99">Lab </tspan><tspan fill="#e0af68">◷2d21h</tspan>
+  </text>
+
+  <rect x="570" y="328" width="326" height="74" rx="8" fill="#0c0d10" stroke="#1b1f2e"/>
+  <text x="582" y="346" class="mono"><tspan fill="#565f89">52 cols (auto-collapse 1-line)</tspan></text>
+  <text x="582" y="378" class="mono">
+    <tspan fill="#ff9e64">⬢</tspan><tspan fill="#c0caf5">Studio</tspan>
+    <tspan fill="#73daca" font-weight="700"> ⇄3</tspan>
+    <tspan fill="#565f89"> 5h </tspan><tspan fill="#f7768e" font-weight="700">●9%</tspan>
+    <tspan fill="#7aa2f7"> ◔ 28%</tspan>
+    <tspan fill="#565f89">  ⎇ </tspan><tspan fill="#bb9af7">main</tspan>
+  </text>
+</svg>
