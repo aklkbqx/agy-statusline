@@ -250,25 +250,31 @@ func TestHybridAnimationsAndDeltaTracker(t *testing.T) {
 	})
 
 	r0 := Render(data, t0, env)
+	r0Later := Render(data, t0.Add(300*time.Millisecond), env)
+	if r0 != r0Later {
+		t.Fatalf("expected steady deterministic output when payload is unchanged (no frozen frame-stepped shimmer)")
+	}
+	plain0 := stripANSI(r0)
+	if !strings.Contains(plain0, "◆") || !strings.Contains(plain0, "THINKING") {
+		t.Fatalf("expected active beacon ◆ and THINKING label, got %q", plain0)
+	}
+	if !strings.Contains(plain0, "◈1") || strings.ContainsAny(plain0, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏▁▃▅▇") {
+		t.Fatalf("expected compact ◈1 badge without frozen Braille/equalizer glyphs, got %q", plain0)
+	}
+	if !strings.Contains(r0, ";5;") {
+		t.Fatalf("expected SGR 5 hardware pulse on active ◆ beacon and ◈ subagent badge, got %q", r0)
+	}
+
 	t1 := t0.Add(300 * time.Millisecond)
 	data.ContextWindow.UsedPercentage = f64Ptr(18)
 	data.ContextWindow.CurrentUsage.InputTokens = 35_000
 	r1 := Render(data, t1, env)
 
 	if r0 == r1 {
-		t.Fatalf("expected active animation frames to differ across 300ms")
-	}
-	if !strings.Contains(stripANSI(r1), "THINKING") {
-		t.Fatalf("expected THINKING shimmer label, got %q", stripANSI(r1))
+		t.Fatalf("expected output to reflect token jump")
 	}
 	if !strings.Contains(stripANSI(r1), "+15k") {
 		t.Fatalf("expected +15k live token delta badge, got %q", stripANSI(r1))
-	}
-
-	data.AgentState = "idle"
-	idle := Render(data, t1, env)
-	if !strings.Contains(idle, ";5;") && !strings.Contains(idle, "\x1b[5m") {
-		t.Fatalf("expected SGR 5 pulse on critical 9%% quota / top swap target, got %q", idle)
 	}
 
 	noBlinkEnv := envMap(map[string]string{
@@ -277,6 +283,17 @@ func TestHybridAnimationsAndDeltaTracker(t *testing.T) {
 		"TERM":                     "xterm-256color",
 		"AGY_STATUSLINE_NO_BLINK":  "1",
 	})
+	noBlinkWorking := Render(data, t1, noBlinkEnv)
+	if strings.Contains(noBlinkWorking, ";5;") || strings.Contains(noBlinkWorking, "\x1b[5m") {
+		t.Fatalf("expected no SGR 5 pulse while working when AGY_STATUSLINE_NO_BLINK=1, got %q", noBlinkWorking)
+	}
+
+	data.AgentState = "idle"
+	idle := Render(data, t1, env)
+	if !strings.Contains(idle, ";5;") && !strings.Contains(idle, "\x1b[5m") {
+		t.Fatalf("expected SGR 5 pulse on critical 9%% quota / top swap target, got %q", idle)
+	}
+
 	noBlink := Render(data, t1, noBlinkEnv)
 	if strings.Contains(noBlink, ";5;") || strings.Contains(noBlink, "\x1b[5m") {
 		t.Fatalf("expected no SGR 5 pulse when AGY_STATUSLINE_NO_BLINK=1, got %q", noBlink)
@@ -463,6 +480,309 @@ func TestGitPorcelainProbe(t *testing.T) {
 	}
 	if detail.Branch != "main" || detail.Staged != 1 || detail.Modified != 1 || detail.Untracked != 1 || detail.IsWorktree {
 		t.Fatalf("unexpected git detail: %+v", detail)
+	}
+}
+
+func TestFleetCountdownTicksLiveFromResetTime(t *testing.T) {
+	t0 := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	swapDir := writeMockAgySwap(t, t0)
+	stateDir := t.TempDir()
+	env := envMap(map[string]string{
+		"AGY_SWAP_DIR":             swapDir,
+		"AGY_STATUSLINE_STATE_DIR": stateDir,
+		"NO_COLOR":                 "1",
+	})
+
+	// Account alex hits low quota with a 2h reset window; saved to fleet.json.
+	d1 := &StatusLineData{
+		Email:         "alex@example.com",
+		TerminalWidth: 142,
+		Model:         &ModelInfo{ID: "gemini-pro-orchestrator"},
+		ContextWindow: &ContextInfo{ContextWindowSize: 200_000, UsedPercentage: f64Ptr(15)},
+		Quota: map[string]QuotaBucket{
+			"gemini-5h":     {RemainingFraction: f64Ptr(0.05), ResetInSeconds: i64Ptr(2 * 3600)},
+			"gemini-weekly": {RemainingFraction: f64Ptr(0.50), ResetInSeconds: i64Ptr(5 * 86400)},
+			"3p-5h":         {RemainingFraction: f64Ptr(1.0)},
+		},
+	}
+	_ = Render(d1, t0, env)
+
+	// Verify persisted fleet.json clears frozen ResetInSeconds when ResetTime is stored.
+	raw, err := os.ReadFile(filepath.Join(stateDir, "fleet.json"))
+	if err != nil {
+		t.Fatalf("expected fleet.json to exist: %v", err)
+	}
+	var persisted map[string]fleetCacheEntry
+	if err := json.Unmarshal(raw, &persisted); err != nil {
+		t.Fatalf("invalid fleet.json: %v", err)
+	}
+	b5 := persisted["alex@example.com"].Quota["gemini-5h"]
+	if b5.ResetTime == nil || b5.ResetInSeconds != nil {
+		t.Fatalf("fleet.json should store ResetTime without frozen ResetInSeconds, got %+v", b5)
+	}
+
+	// Simulate legacy fleet.json with a stale frozen ResetInSeconds alongside ResetTime.
+	frozen := int64(2 * 3600)
+	b5.ResetInSeconds = &frozen
+	persisted["alex@example.com"].Quota["gemini-5h"] = b5
+	legacyBytes, _ := json.Marshal(persisted)
+	if err := os.WriteFile(filepath.Join(stateDir, "fleet.json"), legacyBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// 40 minutes later, switch to sam: alex's countdown must show 1h20m, NOT frozen 2h00m.
+	tLater := t0.Add(40 * time.Minute)
+	d2 := &StatusLineData{
+		Email:         "sam@example.com",
+		TerminalWidth: 142,
+		Model:         &ModelInfo{ID: "gemini-pro-orchestrator"},
+		ContextWindow: &ContextInfo{ContextWindowSize: 200_000, UsedPercentage: f64Ptr(5)},
+		Quota: map[string]QuotaBucket{
+			"gemini-5h":     {RemainingFraction: f64Ptr(1.0), ResetInSeconds: i64Ptr(18000)},
+			"gemini-weekly": {RemainingFraction: f64Ptr(1.0), ResetInSeconds: i64Ptr(604800)},
+		},
+	}
+	rendered := Render(d2, tLater, env)
+	if !strings.Contains(rendered, "◷1h20m") {
+		t.Fatalf("expected live countdown ◷1h20m for cached reserve account, got:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "◷2h00m") {
+		t.Fatalf("countdown stayed frozen at 2h00m:\n%s", rendered)
+	}
+}
+
+func TestPreObservationResetTimeNotFalselyResetToFull(t *testing.T) {
+	obs := time.Date(2026, 11, 19, 12, 42, 9, 0, time.UTC)
+	now := time.Date(2026, 11, 19, 15, 0, 3, 0, time.UTC)
+
+	preObsReset := time.Date(2026, 11, 19, 11, 8, 23, 0, time.UTC).Format(time.RFC3339)
+	postObsReset := time.Date(2026, 11, 19, 14, 0, 0, 0, time.UTC).Format(time.RFC3339)
+
+	raw := map[string]QuotaBucket{
+		"gemini-5h": {RemainingFraction: f64Ptr(0.08), ResetTime: &preObsReset},
+		"3p-5h":     {RemainingFraction: f64Ptr(0.08), ResetTime: &postObsReset},
+	}
+	norm := normalizeCachedBuckets(raw, obs, true, now)
+
+	if got := bucketRemainingPct(norm["gemini-5h"]); got > 9.0 {
+		t.Fatalf("bucket with reset_time before observed_at must NOT reset to 100%%, got %.1f%%", got)
+	}
+	if got := bucketRemainingPct(norm["3p-5h"]); got < 99.9 {
+		t.Fatalf("bucket with reset_time between observed_at and now should reset to 100%%, got %.1f%%", got)
+	}
+}
+
+func TestFleetStaleIndicator(t *testing.T) {
+	now := time.Date(2026, 11, 19, 15, 0, 0, 0, time.UTC)
+	dir := t.TempDir()
+	stateDir := t.TempDir()
+
+	freshObs := now.Add(-2 * time.Minute).Format(time.RFC3339)
+	staleObs := now.Add(-2 * time.Hour).Format(time.RFC3339)
+	futureReset := now.Add(3 * time.Hour).Format(time.RFC3339)
+
+	_ = os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"policy":{"min_remaining_pct":10}}`), 0o600)
+	accounts := map[string]any{
+		"active@example.com": map[string]any{
+			"email": "active@example.com", "name": "Active", "secret_ref": "v1",
+		},
+		"fresh@example.com": map[string]any{
+			"email": "fresh@example.com", "name": "Fresh Pro", "secret_ref": "v2",
+			"quota_snapshot": map[string]any{
+				"observed_at": freshObs,
+				"groups": []map[string]any{{
+					"id": "gemini", "buckets": []map[string]any{
+						{"id": "gemini-5h", "remaining_fraction": 1.0, "reset_at": futureReset, "window": "5h"},
+					},
+				}},
+			},
+		},
+		"stale@example.com": map[string]any{
+			"email": "stale@example.com", "name": "Stale Pro", "secret_ref": "v3",
+			"quota_snapshot": map[string]any{
+				"observed_at": staleObs,
+				"groups": []map[string]any{{
+					"id": "gemini", "buckets": []map[string]any{
+						{"id": "gemini-5h", "remaining_fraction": 0.85, "reset_at": futureReset, "window": "5h"},
+					},
+				}},
+			},
+		},
+	}
+	b, _ := json.Marshal(accounts)
+	_ = os.WriteFile(filepath.Join(dir, "accounts.json"), b, 0o600)
+
+	env := envMap(map[string]string{
+		"AGY_SWAP_DIR":             dir,
+		"AGY_STATUSLINE_STATE_DIR": stateDir,
+		"NO_COLOR":                 "1",
+	})
+	data := &StatusLineData{
+		Email:         "active@example.com",
+		TerminalWidth: 142,
+		Model:         &ModelInfo{ID: "gemini-pro-orchestrator"},
+		ContextWindow: &ContextInfo{ContextWindowSize: 200_000, UsedPercentage: f64Ptr(10)},
+		Quota: map[string]QuotaBucket{
+			"gemini-5h": {RemainingFraction: f64Ptr(0.80), ResetInSeconds: i64Ptr(3600)},
+		},
+	}
+	rendered := Render(data, now, env)
+	lines := strings.Split(rendered, "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d: %q", len(lines), rendered)
+	}
+	if DisplayWidth(lines[1]) != 142 {
+		t.Fatalf("row 2 width mismatch: got %d want 142 (%q)", DisplayWidth(lines[1]), lines[1])
+	}
+	if !strings.Contains(lines[1], "~85%") {
+		t.Fatalf("expected stale indicator ~85%% on stale reserve, got %q", lines[1])
+	}
+	if strings.Contains(lines[1], "~100%") {
+		t.Fatalf("fresh reserve should not carry ~ stale marker, got %q", lines[1])
+	}
+}
+
+func TestSessionIsolationWriteOnChangeAndTempCleanup(t *testing.T) {
+	t0 := time.Date(2026, 11, 19, 15, 0, 0, 0, time.UTC)
+	stateDir := t.TempDir()
+	env := envMap(map[string]string{
+		"AGY_STATUSLINE_STATE_DIR": stateDir,
+		"AGY_SWAP_DIR":             filepath.Join(stateDir, "missing-swap"),
+		"NO_COLOR":                 "1",
+	})
+
+	// Seed an old orphaned legacy tmp-* file and a fresh .tmp. file.
+	oldTmp := filepath.Join(stateDir, "tmp-9999999")
+	freshTmp := filepath.Join(stateDir, "fleet.json.tmp.99999.1")
+	_ = os.WriteFile(oldTmp, []byte(""), 0o600)
+	_ = os.WriteFile(freshTmp, []byte(""), 0o600)
+	past := time.Now().Add(-5 * time.Minute)
+	_ = os.Chtimes(oldTmp, past, past)
+
+	dA := &StatusLineData{
+		ConversationID: "conv-a",
+		Email:          "alex@example.com",
+		TerminalWidth:  120,
+		Model:          &ModelInfo{ID: "gemini-pro-orchestrator"},
+		ContextWindow:  &ContextInfo{ContextWindowSize: 200_000, CurrentUsage: &CurrentUsageInfo{InputTokens: 10_000}},
+		Quota:          map[string]QuotaBucket{"gemini-5h": {RemainingFraction: f64Ptr(0.5), ResetInSeconds: i64Ptr(3600)}},
+	}
+	dB := &StatusLineData{
+		ConversationID: "conv-b",
+		Email:          "alex@example.com",
+		TerminalWidth:  120,
+		Model:          &ModelInfo{ID: "gemini-pro-orchestrator"},
+		ContextWindow:  &ContextInfo{ContextWindowSize: 200_000, CurrentUsage: &CurrentUsageInfo{InputTokens: 25_000}},
+		Quota:          map[string]QuotaBucket{"gemini-5h": {RemainingFraction: f64Ptr(0.5), ResetInSeconds: i64Ptr(3600)}},
+	}
+
+	_ = Render(dA, t0, env)
+	_ = Render(dB, t0, env)
+
+	// Old orphaned temp must be swept while fresh temp remains untouched.
+	if _, err := os.Stat(oldTmp); !os.IsNotExist(err) {
+		t.Fatalf("expected old orphaned tmp file to be swept, err=%v", err)
+	}
+	if _, err := os.Stat(freshTmp); err != nil {
+		t.Fatalf("fresh tmp file should not be removed prematurely: %v", err)
+	}
+
+	sessAPath := filepath.Join(stateDir, "sessions", shortHash("conv-a")+".json")
+	sessBPath := filepath.Join(stateDir, "sessions", shortHash("conv-b")+".json")
+	fleetPath := filepath.Join(stateDir, "fleet.json")
+
+	stA1, err := os.Stat(sessAPath)
+	if err != nil {
+		t.Fatalf("missing per-session file for conv-a: %v", err)
+	}
+	if _, err := os.Stat(sessBPath); err != nil {
+		t.Fatalf("missing per-session file for conv-b: %v", err)
+	}
+	stF1, err := os.Stat(fleetPath)
+	if err != nil {
+		t.Fatalf("missing fleet.json: %v", err)
+	}
+
+	// Render again 2 seconds later with unchanged tokens & quota -> ZERO disk rewrites.
+	time.Sleep(15 * time.Millisecond)
+	_ = Render(dA, t0.Add(2*time.Second), env)
+
+	stA2, _ := os.Stat(sessAPath)
+	stF2, _ := os.Stat(fleetPath)
+	if !stA2.ModTime().Equal(stA1.ModTime()) {
+		t.Fatalf("expected unchanged session render to skip disk write")
+	}
+	if !stF2.ModTime().Equal(stF1.ModTime()) {
+		t.Fatalf("expected unchanged quota render to skip fleet.json rewrite")
+	}
+}
+
+func TestGitFingerprintInvalidationAndSWR(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=t@example.com", "GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=t@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v failed: %v\n%s", args, err, out)
+		}
+	}
+	runGit("init", "-b", "main")
+	_ = os.WriteFile(filepath.Join(repo, "a.txt"), []byte("one\n"), 0o644)
+	runGit("add", "a.txt")
+	runGit("commit", "-m", "init")
+
+	var asyncTriggered []string
+	origRefresher := gitAsyncRefresher
+	gitAsyncRefresher = func(sd, d string) {
+		asyncTriggered = append(asyncTriggered, d)
+	}
+	defer func() { gitAsyncRefresher = origRefresher }()
+
+	t0 := time.Date(2026, 11, 19, 15, 0, 0, 0, time.UTC)
+	data := &StatusLineData{
+		Workspace: &WorkspaceInfo{CurrentDir: repo, ProjectDir: repo},
+	}
+
+	// Cold probe caches "main".
+	g1 := loadGitStatus(data, stateDir, t0, nil)
+	if !g1.Probed || g1.Branch != "main" {
+		t.Fatalf("expected initial probe on main, got %+v", g1)
+	}
+	if len(asyncTriggered) != 0 {
+		t.Fatalf("cold probe succeeded synchronously; expected 0 async calls, got %d", len(asyncTriggered))
+	}
+
+	// Fresh cache hit within 2s TTL and matching fingerprint -> 0 async calls.
+	g2 := loadGitStatus(data, stateDir, t0.Add(500*time.Millisecond), nil)
+	if g2.Branch != "main" || len(asyncTriggered) != 0 {
+		t.Fatalf("expected fresh cache hit, got detail=%+v async=%d", g2, len(asyncTriggered))
+	}
+
+	// Switch branch -> HEAD fingerprint changes immediately (still well within 2s TTL!).
+	runGit("checkout", "-b", "feat/realtime")
+	g3 := loadGitStatus(data, stateDir, t0.Add(600*time.Millisecond), nil)
+	if g3.Branch != "feat/realtime" {
+		t.Fatalf("expected instant HEAD branch update on frame 0, got %+v", g3)
+	}
+	if len(asyncTriggered) != 1 {
+		t.Fatalf("expected 1 background SWR refresh trigger on fingerprint mismatch, got %d", len(asyncTriggered))
+	}
+
+	// Execute locked refresh helper -> subsequent call is fresh with 0 new triggers.
+	if ok := RefreshGitCacheLocked(stateDir, repo, t0.Add(700*time.Millisecond)); !ok {
+		t.Fatal("RefreshGitCacheLocked failed")
+	}
+	g4 := loadGitStatus(data, stateDir, t0.Add(800*time.Millisecond), nil)
+	if g4.Branch != "feat/realtime" || len(asyncTriggered) != 1 {
+		t.Fatalf("expected fresh cache after RefreshGitCacheLocked, got %+v async=%d", g4, len(asyncTriggered))
+	}
+
+	// TTL expiry (>2s) returns cached immediately and queues async refresh without blocking.
+	g5 := loadGitStatus(data, stateDir, t0.Add(5*time.Second), nil)
+	if g5.Branch != "feat/realtime" || len(asyncTriggered) != 2 {
+		t.Fatalf("expected SWR trigger after TTL expiry, got %+v async=%d", g5, len(asyncTriggered))
 	}
 }
 

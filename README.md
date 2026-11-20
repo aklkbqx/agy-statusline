@@ -32,11 +32,11 @@
 - **Full-width Left ↔ Right layout**: Snaps flush to your exact `terminal_width` right below `agy`'s native mode/model line across 7 responsive breakpoints — collapsing cleanly down to 28-column split panes without wrapping.
 - **Seamless half-step laser gauges**: Uses crisp 1-cell Box-Drawing glyphs (`━╸─`) instead of gapped blocks or wide emojis, with zero-width Thai/Unicode combining-mark width math (`DisplayWidth`) so alignment stays exact on every font.
 - **Multi-account `agy-swap` Fleet Deck (Row 2)**: Shows all reserve accounts sorted by readiness (`ready` → `partial` → `cooldown` → `unavailable`), detects pool-specific availability (e.g. `Gemini` in cooldown while `3P` is `100%` ready), and maintains live cross-account quota memory when you switch sessions.
-- **Hybrid 3-layer motion**:
-  1. **Active turn frames**: Braille spinner (`⠋..⠏`), RGB gradient shimmer (`THINKING`, `TOOL`, `STREAM`), pulsing bar tip, and animated subagent equalizer (`◈2 ▃▅▇`).
-  2. **Zero-CPU idle pulse**: Terminal hardware SGR `5` blink on critical `<= 15%` quota, `CONFIRM` prompts, and the `#1` ready swap account (`AGY_STATUSLINE_NO_BLINK=1` turns this off).
+- **Zero-CPU hardware-pulsed indicators**:
+  1. **Active turn beacon**: Hardware SGR `5` pulsing cyan beacon (`◆`), crisp active status pill (`THINKING`, `TOOL`, `STREAM`), illuminated laser gauge tip, and pulsing subagent badge (`◈2`) — stays smooth even between event-driven `agy` refreshes (`AGY_STATUSLINE_NO_BLINK=1` turns blink off).
+  2. **Critical & swap alerts**: Terminal hardware SGR `5` pulse on critical `<= 15%` quota, `CONFIRM` prompts (`◉`), and the `#1` ready swap account (`⇄`).
   3. **Live session delta**: Tracks `+Nk` token jumps for 8 seconds and elapsed conversation time (`◴14m`).
-- **Cached Git porcelain**: Runs `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0`, 4s TTL cache, linked worktree badge (`⧉`), staged/modified/untracked/conflict counts, and ahead/behind arrows.
+- **Non-blocking SWR Git porcelain**: Stat-invalidates immediately on `.git/HEAD`, `.git/index`, and ref mutations (instant branch updates on frame 0), refreshes `git status --porcelain=v2 --branch` with `GIT_OPTIONAL_LOCKS=0` asynchronously via stale-while-revalidate (2s TTL), and shows linked worktree (`⧉`), staged/modified/untracked/conflict counts, and ahead/behind arrows.
 
 ## Install
 
@@ -89,7 +89,7 @@ agy-statusline uninstall
 
 | Glyph | Meaning | Notes |
 | :--- | :--- | :--- |
-| `⬢` / `⠋..⠏` / `◉` | Account / Active spinner / Confirmation required | Surface pill changes tint by state (`idle` / `working` / `confirm`) |
+| `⬢` / `◆` / `◉` | Account / Active beacon / Confirmation required | Surface pill changes tint by state (`idle` / `working` / `confirm`); `◆` and `◉` use SGR `5` pulse |
 | `━╸─` | Half-step quota & context gauge | Even `1%–9%` keeps a lit `╸` tip so low pools never look `0%` |
 | `▲` | Burn-rate pace warning | Shown when quota consumption is `>= 15%` ahead of elapsed window time |
 | `↻2h04m` | Time until bucket resets | Shown when `5h < 100%` or `7d <= 30%` |
@@ -98,7 +98,7 @@ agy-statusline uninstall
 | `⇄` | Best ready swap account | Highlighted when active pool drops below `25%` |
 | `●` / `◐` / `◌` | Fleet account state | Ready / Partial (other model pool usable) / Cooldown or unavailable |
 | `⌂` / `⧉` / `⎇` | Workspace / Linked Git worktree / Branch | Includes `+staged ~modified ?untracked ✖conflicts ↑ahead ↓behind` |
-| `◈2 ▃▅▇` / `◷1` / `✦2` | Active subagents / Background tasks / Artifacts | Hidden automatically when count is zero |
+| `◈2` / `◷1` / `✦2` | Active subagents / Background tasks / Artifacts | Hidden automatically when count is zero (`◈` pulses via SGR `5` while active) |
 
 ## Multi-account Fleet Deck
 

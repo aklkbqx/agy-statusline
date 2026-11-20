@@ -320,11 +320,11 @@ type span struct {
 
 type group []span
 
-func renderLaserBar(pct float64, cells int, fillColor rgb, working bool, frame int64, th theme) group {
-	return renderLaserBarOnBg(pct, cells, fillColor, nil, working, frame, th)
+func renderLaserBar(pct float64, cells int, fillColor rgb, working bool, th theme) group {
+	return renderLaserBarOnBg(pct, cells, fillColor, nil, working, th)
 }
 
-func renderLaserBarOnBg(pct float64, cells int, fillColor rgb, bg *rgb, working bool, frame int64, th theme) group {
+func renderLaserBarOnBg(pct float64, cells int, fillColor rgb, bg *rgb, working bool, th theme) group {
 	if cells <= 0 {
 		return nil
 	}
@@ -346,11 +346,11 @@ func renderLaserBarOnBg(pct float64, cells int, fillColor rgb, bg *rgb, working 
 	}
 
 	tipColor := th.brightenTip(fillColor)
-	pulseTip := working && (frame%2 == 0)
+	litTip := working
 
 	var g group
 	if fullCells > 0 {
-		if pulseTip {
+		if litTip {
 			if fullCells > 1 {
 				g = append(g, span{text: strings.Repeat("━", fullCells-1), style: th.style(fillColor, bg, false, false)})
 			}
@@ -365,10 +365,10 @@ func renderLaserBarOnBg(pct float64, cells int, fillColor rgb, bg *rgb, working 
 	}
 	if hasHalf {
 		c := fillColor
-		if pulseTip {
+		if litTip {
 			c = tipColor
 		}
-		g = append(g, span{text: "╸", style: th.style(c, bg, pulseTip, false)})
+		g = append(g, span{text: "╸", style: th.style(c, bg, litTip, false)})
 	}
 	if emptyCells > 0 {
 		g = append(g, span{text: strings.Repeat("─", emptyCells), style: th.style(th.p.Track, bg, false, false)})
@@ -391,37 +391,6 @@ func (t theme) brightenTip(c rgb) rgb {
 	}
 }
 
-func shimmerSpans(text string, bg rgb, frame int64, th theme) group {
-	if !th.enabled {
-		return group{{text: text}}
-	}
-	palette := []rgb{th.p.Cyan, th.p.Blue, th.p.Purple}
-	var g group
-	idx := 0
-	for _, r := range text {
-		phase := float64(frame)*0.65 - float64(idx)*0.45
-		pos := 1.0 - math.Cos(phase)
-		var c rgb
-		if pos <= 1.0 {
-			c = lerpRGB(palette[0], palette[1], pos)
-		} else {
-			c = lerpRGB(palette[1], palette[2], pos-1.0)
-		}
-		g = append(g, span{text: string(r), style: th.style(c, &bg, true, false)})
-		idx++
-	}
-	return g
-}
-
-func lerpRGB(a, b rgb, t float64) rgb {
-	t = clamp(t, 0, 1)
-	return rgb{
-		r: int(math.Round(float64(a.r) + (float64(b.r)-float64(a.r))*t)),
-		g: int(math.Round(float64(a.g) + (float64(b.g)-float64(a.g))*t)),
-		b: int(math.Round(float64(a.b) + (float64(b.b)-float64(a.b))*t)),
-	}
-}
-
 // SamplePreview renders a short sample pill + laser gauges for the named theme.
 func SamplePreview(name string, colorEnabled bool) string {
 	th := newTheme(name, colorEnabled, true)
@@ -434,10 +403,10 @@ func SamplePreview(name string, colorEnabled bool) string {
 		span{text: " ", style: th.bgOnly(bg)},
 		span{text: "  5h ", style: th.fg(th.p.Dim)},
 	)
-	g = append(g, renderLaserBar(76, 6, th.p.Green, false, 0, th)...)
+	g = append(g, renderLaserBar(76, 6, th.p.Green, false, th)...)
 	g = append(g, span{text: " 76%", style: th.fg(th.p.Green)})
 	g = append(g, span{text: "  CTX ", style: th.fg(th.p.Muted)})
-	g = append(g, renderLaserBar(38, 6, th.p.Blue, false, 0, th)...)
+	g = append(g, renderLaserBar(38, 6, th.p.Blue, false, th)...)
 	g = append(g, span{text: " 38%", style: th.fg(th.p.Blue)})
 	_, out := renderSpans(g, th)
 	return out

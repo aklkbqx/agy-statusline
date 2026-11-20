@@ -105,16 +105,20 @@ type FleetAccountView struct {
 	HasSecondary    bool
 	LowQuotaBlocked bool
 	WaitSeconds     int64
+	AgeSeconds      int64
+	Stale           bool
 }
 
 // AgySwapInfo holds read-only account alias and reserve fleet state.
 type AgySwapInfo struct {
-	Alias         string
-	ActiveTier    string
-	ReadyReserves int
-	TotalAccounts int
-	FallbackQuota map[string]QuotaBucket
-	Fleet         []FleetAccountView
+	Alias             string
+	ActiveTier        string
+	ReadyReserves     int
+	TotalAccounts     int
+	StaleFleetCount   int
+	OldestFleetAgeSec int64
+	FallbackQuota     map[string]QuotaBucket
+	Fleet             []FleetAccountView
 }
 
 // SessionView holds tracked elapsed time and recent context token delta.
@@ -135,6 +139,12 @@ type GitDetail struct {
 	Conflicts  int    `json:"conflicts"`
 	Dirty      bool   `json:"dirty"`
 	Probed     bool   `json:"probed"`
+}
+
+type gitCacheEntry struct {
+	Detail      GitDetail `json:"detail"`
+	Fingerprint string    `json:"fingerprint,omitempty"`
+	ProbedAt    int64     `json:"probed_at"`
 }
 
 type agySwapConfig struct {

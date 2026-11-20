@@ -39,6 +39,11 @@ func Run(
 			fmt.Fprintln(stdout, out)
 		}
 		return 0
+	case "_refresh-git":
+		if len(args) >= 3 {
+			hud.RefreshGitCacheLocked(args[1], args[2], time.Now().UTC())
+		}
+		return 0
 	case "install":
 		return cmdInstall(args[1:], stdout, stderr, getenv)
 	case "uninstall":
@@ -187,9 +192,15 @@ func cmdDoctor(args []string, stdout, stderr io.Writer, version, buildID string,
 	colorTerm := getenv("COLORTERM")
 	noColor := getenv("NO_COLOR")
 
+	stateDir := hud.ResolveStateDir(getenv)
+	orphanTemps := hud.CountOrphanedTemps(stateDir)
 	fmt.Fprintf(stdout, "agy-statusline doctor (v%s, %s)\n", version, buildID)
 	fmt.Fprintf(stdout, "  binary      : %s\n", exePath)
-	fmt.Fprintf(stdout, "  state dir   : %s\n", hud.ResolveStateDir(getenv))
+	if orphanTemps > 0 {
+		fmt.Fprintf(stdout, "  state dir   : %s (%d orphaned temp files; auto-swept on next write)\n", stateDir, orphanTemps)
+	} else {
+		fmt.Fprintf(stdout, "  state dir   : %s (clean)\n", stateDir)
+	}
 
 	if !rep.Exists {
 		fmt.Fprintf(stdout, "  settings    : missing (%s)\n", rep.Path)
@@ -226,8 +237,13 @@ func cmdDoctor(args []string, stdout, stderr io.Writer, version, buildID string,
 	}
 
 	if swapInfo.TotalAccounts > 0 {
-		fmt.Fprintf(stdout, "  agy-swap    : detected (%d accounts, %d ready for Gemini; 0 secrets read) [%s]\n",
-			swapInfo.TotalAccounts, swapInfo.ReadyReserves, swapDir)
+		freshNote := "fresh"
+		if swapInfo.StaleFleetCount > 0 {
+			freshNote = fmt.Sprintf("%d stale, oldest %s — run 'agy-swap limits' or 'agy-swap watch' to refresh",
+				swapInfo.StaleFleetCount, formatDoctorAge(swapInfo.OldestFleetAgeSec))
+		}
+		fmt.Fprintf(stdout, "  agy-swap    : detected (%d accounts, %d ready for Gemini, %s; 0 secrets read) [%s]\n",
+			swapInfo.TotalAccounts, swapInfo.ReadyReserves, freshNote, swapDir)
 	} else {
 		fmt.Fprintf(stdout, "  agy-swap    : not configured (%s)\n", swapDir)
 	}
@@ -239,6 +255,21 @@ func cmdDoctor(args []string, stdout, stderr io.Writer, version, buildID string,
 		return 1
 	}
 	return 0
+}
+
+func formatDoctorAge(seconds int64) string {
+	if seconds < 60 {
+		return fmt.Sprintf("%ds", seconds)
+	}
+	mins := seconds / 60
+	if mins < 60 {
+		return fmt.Sprintf("%dm", mins)
+	}
+	hours := mins / 60
+	if hours < 24 {
+		return fmt.Sprintf("%dh%02dm", hours, mins%60)
+	}
+	return fmt.Sprintf("%dd%dh", hours/24, hours%24)
 }
 
 func findAgyBinary(getenv func(string) string) string {

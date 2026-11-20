@@ -16,11 +16,6 @@ import (
 
 const maxStdinBytes = 256 * 1024
 
-var (
-	brailleFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-	eqFrames      = []string{"▁▃▅", "▃▅▇", "▅▇▃", "▇▃▁"}
-)
-
 // RenderReader parses StatusLineData JSON from r and returns the formatted ANSI HUD.
 func RenderReader(r io.Reader, now time.Time, getenv func(string) string, opts ...RenderOptions) string {
 	raw, err := io.ReadAll(io.LimitReader(r, maxStdinBytes))
@@ -170,16 +165,15 @@ func renderWithResolvedState(
 	hideAccount := isTruthy(getenv("AGY_CLI_HIDE_ACCOUNT_INFO"))
 	singleLine := opt.SingleLine || isTruthy(getenv("AGY_STATUSLINE_SINGLE_LINE"))
 	cols := resolveWidth(data.TerminalWidth, getenv)
-	frame := now.UnixMilli() / 240
 
 	showRow2 := !singleLine && cols >= 58 && !hideAccount && len(swapInfo.Fleet) > 0
 
-	row1 := renderRow1(data, quota, swapInfo, git, usedTokens, ctxPct, ctxMax, cachePct, sess, family, hideAccount, showRow2, cols, frame, now, getenv, th)
+	row1 := renderRow1(data, quota, swapInfo, git, usedTokens, ctxPct, ctxMax, cachePct, sess, family, hideAccount, showRow2, cols, now, getenv, th)
 	if !showRow2 {
 		return row1
 	}
 
-	row2 := renderRow2(quota, swapInfo, family, cols, frame, th)
+	row2 := renderRow2(quota, swapInfo, family, cols, th)
 	if row2 == "" {
 		return row1
 	}
@@ -246,7 +240,6 @@ func renderRow1(
 	hideAccount bool,
 	showRow2 bool,
 	cols int,
-	frame int64,
 	now time.Time,
 	getenv func(string) string,
 	th theme,
@@ -256,13 +249,13 @@ func renderRow1(
 
 	startLevel := preferredRow1Level(cols)
 	for level := startLevel; level >= 0; level-- {
-		leftGroups := buildRow1LeftGroups(data, quota, swapInfo, usedTokens, ctxPct, ctxMax, cachePct, sess, family, hideAccount, showRow2, working, needsAction, level, frame, now, th)
+		leftGroups := buildRow1LeftGroups(data, quota, swapInfo, usedTokens, ctxPct, ctxMax, cachePct, sess, family, hideAccount, showRow2, working, needsAction, level, now, th)
 		leftW, leftStr := renderGroups(leftGroups, th)
 		if leftW > cols && level > 0 {
 			continue
 		}
 
-		candidates := buildRow1RightCandidates(data, git, sess, level, frame, getenv, th)
+		candidates := buildRow1RightCandidates(data, git, sess, level, getenv, th)
 		if level >= 2 && len(candidates) > 0 {
 			minRight := spansWidth(candidates[0].spans)
 			if leftW+2+minRight > cols {
@@ -285,7 +278,7 @@ func renderRow1(
 		return leftStr
 	}
 
-	leftGroups := buildRow1LeftGroups(data, quota, swapInfo, usedTokens, ctxPct, ctxMax, cachePct, sess, family, hideAccount, showRow2, working, needsAction, 0, frame, now, th)
+	leftGroups := buildRow1LeftGroups(data, quota, swapInfo, usedTokens, ctxPct, ctxMax, cachePct, sess, family, hideAccount, showRow2, working, needsAction, 0, now, th)
 	_, leftStr := renderGroups(leftGroups, th)
 	return hardTruncateANSI(leftStr, cols, th.enabled)
 }
@@ -322,7 +315,6 @@ func buildRow1LeftGroups(
 	working bool,
 	needsAction bool,
 	level int,
-	frame int64,
 	now time.Time,
 	th theme,
 ) []group {
@@ -333,15 +325,15 @@ func buildRow1LeftGroups(
 	primaryMinPct, hasPrimaryMin := poolMinRemainingPct(primary5h, has5h, primary7d, has7d)
 	lowQuota := hasPrimaryMin && primaryMinPct < 25.0
 
-	if acct := buildRow1IdentityGroup(data, swapInfo, lowQuota, hideAccount, showRow2, working, needsAction, level, frame, th); len(acct) > 0 {
+	if acct := buildRow1IdentityGroup(data, swapInfo, lowQuota, hideAccount, showRow2, working, needsAction, level, th); len(acct) > 0 {
 		groups = append(groups, acct)
 	}
 
-	if qg := buildRow1QuotaGroup(quota, family, primary5h, has5h, primary7d, has7d, working, level, frame, now, th); len(qg) > 0 {
+	if qg := buildRow1QuotaGroup(quota, family, primary5h, has5h, primary7d, has7d, working, level, now, th); len(qg) > 0 {
 		groups = append(groups, qg)
 	}
 
-	if cg := buildRow1ContextGroup(usedTokens, ctxPct, ctxMax, cachePct, sess.ActiveDeltaTokens, working, level, frame, th); len(cg) > 0 {
+	if cg := buildRow1ContextGroup(usedTokens, ctxPct, ctxMax, cachePct, sess.ActiveDeltaTokens, working, level, th); len(cg) > 0 {
 		groups = append(groups, cg)
 	}
 
@@ -359,7 +351,6 @@ func buildRow1IdentityGroup(
 	working bool,
 	needsAction bool,
 	level int,
-	frame int64,
 	th theme,
 ) group {
 	if hideAccount && !working && !needsAction {
@@ -384,8 +375,7 @@ func buildRow1IdentityGroup(
 			return group{{text: "◉ ACTION", style: th.style(th.p.Amber, nil, true, true)}}
 		}
 		if working {
-			spin := brailleFrames[int(frame%int64(len(brailleFrames)))]
-			return group{{text: spin, style: th.fg(th.p.Cyan)}}
+			return group{{text: "◆", style: th.style(th.p.Cyan, nil, true, true)}}
 		}
 		if showInlineSwap {
 			return inlineSwapSpan(swapInfo.ReadyReserves, false, th)
@@ -401,8 +391,7 @@ func buildRow1IdentityGroup(
 				span{text: " ACT", style: th.fgBold(th.p.Amber)},
 			)
 		} else if working {
-			spin := brailleFrames[int(frame%int64(len(brailleFrames)))]
-			g = append(g, span{text: spin, style: th.fg(th.p.Cyan)})
+			g = append(g, span{text: "◆", style: th.style(th.p.Cyan, nil, true, true)})
 			if alias != "" {
 				g = append(g, span{text: " " + alias, style: th.fg(th.p.Text)})
 			}
@@ -437,10 +426,9 @@ func buildRow1IdentityGroup(
 		)
 	case working:
 		bg = th.p.BgWorkPill
-		spin := brailleFrames[int(frame%int64(len(brailleFrames)))]
 		g = append(g,
 			span{text: " ", style: th.bgOnly(bg)},
-			span{text: spin, style: th.style(th.p.Cyan, &bg, true, false)},
+			span{text: "◆", style: th.style(th.p.Cyan, &bg, true, true)},
 		)
 		if alias != "" {
 			g = append(g,
@@ -450,8 +438,10 @@ func buildRow1IdentityGroup(
 		} else {
 			g = append(g, span{text: " ", style: th.bgOnly(bg)})
 		}
-		g = append(g, shimmerSpans(formatWorkingLabel(data.AgentState), bg, frame, th)...)
-		g = append(g, span{text: " ", style: th.bgOnly(bg)})
+		g = append(g,
+			span{text: formatWorkingLabel(data.AgentState), style: th.style(th.p.Cyan, &bg, true, false)},
+			span{text: " ", style: th.bgOnly(bg)},
+		)
 	default:
 		if alias == "" {
 			return nil
@@ -501,7 +491,6 @@ func buildRow1QuotaGroup(
 	has7d bool,
 	working bool,
 	level int,
-	frame int64,
 	now time.Time,
 	th theme,
 ) group {
@@ -598,7 +587,7 @@ func buildRow1QuotaGroup(
 		pct5h := bucketRemainingPct(b5h)
 		c, pace := quotaColorRGB(pct5h, b5h, 18000, now, th)
 		g = append(g, span{text: "5h ", style: th.fg(th.p.Dim)})
-		g = append(g, renderLaserBar(pct5h, bar5Cells, c, working, frame, th)...)
+		g = append(g, renderLaserBar(pct5h, bar5Cells, c, working, th)...)
 		g = append(g, span{text: " ", style: ""})
 		if pct5h <= 15.0 {
 			g = append(g, span{text: "●", style: th.style(th.p.Red, nil, true, true)})
@@ -621,7 +610,7 @@ func buildRow1QuotaGroup(
 		c, pace := quotaColorRGB(pct7d, b7d, 604800, now, th)
 		g = append(g, span{text: "7d ", style: th.fg(th.p.Dim)})
 		if bar7Cells > 0 {
-			g = append(g, renderLaserBar(pct7d, bar7Cells, c, working, frame, th)...)
+			g = append(g, renderLaserBar(pct7d, bar7Cells, c, working, th)...)
 			g = append(g, span{text: " ", style: ""})
 		}
 		g = append(g, span{text: fmt.Sprintf("%.0f%%", math.Round(pct7d)), style: th.style(c, nil, pct7d <= 20, false)})
@@ -659,7 +648,7 @@ func buildRow1QuotaGroup(
 				if secMin < 50.0 {
 					barCol = secCol
 				}
-				g = append(g, renderLaserBar(secMin, barSecCells, barCol, false, frame, th)...)
+				g = append(g, renderLaserBar(secMin, barSecCells, barCol, false, th)...)
 				g = append(g, span{text: " ", style: ""})
 			}
 			g = append(g, span{text: fmt.Sprintf("%.0f%%", math.Round(secMin)), style: th.fg(secCol)})
@@ -703,7 +692,6 @@ func buildRow1ContextGroup(
 	activeDelta int,
 	working bool,
 	level int,
-	frame int64,
 	th theme,
 ) group {
 	c := ctxColorRGB(pct, th)
@@ -728,7 +716,7 @@ func buildRow1ContextGroup(
 	}
 
 	g = append(g, span{text: "CTX ", style: th.fg(th.p.Muted)})
-	g = append(g, renderLaserBar(pct, cells, c, working, frame, th)...)
+	g = append(g, renderLaserBar(pct, cells, c, working, th)...)
 	g = append(g, span{text: fmt.Sprintf(" %.0f%%", math.Round(pct)), style: th.style(c, nil, pct >= 80, false)})
 
 	if level >= 3 && windowSize > 0 {
@@ -763,7 +751,6 @@ func buildRow1RightCandidates(
 	git GitDetail,
 	sess SessionView,
 	level int,
-	frame int64,
 	getenv func(string) string,
 	th theme,
 ) []rightCandidate {
@@ -786,7 +773,7 @@ func buildRow1RightCandidates(
 		}
 	}
 
-	if act := buildActivityRightGroup(data, level, frame, th); len(act) > 0 {
+	if act := buildActivityRightGroup(data, level, th); len(act) > 0 {
 		out = append(out, rightCandidate{priority: 3, order: 4, spans: act})
 	}
 
@@ -885,7 +872,7 @@ func buildGitRightGroup(git GitDetail, level int, th theme) group {
 	return g
 }
 
-func buildActivityRightGroup(data *StatusLineData, level int, frame int64, th theme) group {
+func buildActivityRightGroup(data *StatusLineData, level int, th theme) group {
 	if level < 2 {
 		return nil
 	}
@@ -897,11 +884,10 @@ func buildActivityRightGroup(data *StatusLineData, level int, frame int64, th th
 	}
 	if activeSub := countActiveSubagents(data.Subagents); activeSub > 0 {
 		addGap()
-		g = append(g, span{text: fmt.Sprintf("◈%d", activeSub), style: th.fg(th.p.Purple)})
-		if level >= 3 {
-			eq := eqFrames[int(frame%int64(len(eqFrames)))]
-			g = append(g, span{text: " " + eq, style: th.fg(th.p.Cyan)})
-		}
+		g = append(g,
+			span{text: "◈", style: th.style(th.p.Purple, nil, true, true)},
+			span{text: fmt.Sprintf("%d", activeSub), style: th.fg(th.p.Purple)},
+		)
 	}
 	if data.TaskCount > 0 {
 		addGap()
@@ -966,7 +952,6 @@ func renderRow2(
 	swapInfo AgySwapInfo,
 	family string,
 	cols int,
-	frame int64,
 	th theme,
 ) string {
 	if len(swapInfo.Fleet) == 0 {
@@ -997,7 +982,7 @@ func renderRow2(
 		totalW := 0
 		for i, fv := range swapInfo.Fleet {
 			isTopSwap := lowQuota && bestReady != nil && strings.EqualFold(fv.Email, bestReady.Email)
-			g := buildFleetChip(fv, family, chipStyle, isTopSwap, frame, th)
+			g := buildFleetChip(fv, family, chipStyle, isTopSwap, th)
 			gw := spansWidth(g)
 			if i > 0 {
 				totalW++
@@ -1022,7 +1007,7 @@ func renderRow2(
 	usedW := 0
 	for idx, fv := range swapInfo.Fleet {
 		isTopSwap := lowQuota && bestReady != nil && strings.EqualFold(fv.Email, bestReady.Email)
-		g := buildFleetChip(fv, family, 0, isTopSwap, frame, th)
+		g := buildFleetChip(fv, family, 0, isTopSwap, th)
 		gw := spansWidth(g)
 		sep := 0
 		if len(fitted) > 0 {
@@ -1109,7 +1094,7 @@ func renderFleetRightSummary(readyCount, totalCount int, bestReady *FleetAccount
 	return renderSpans(g, th)
 }
 
-func buildFleetChip(fv FleetAccountView, family string, chipStyle int, isTopSwap bool, frame int64, th theme) group {
+func buildFleetChip(fv FleetAccountView, family string, chipStyle int, isTopSwap bool, th theme) group {
 	_, secLabel := secondaryFamily(family)
 
 	var bg *rgb
@@ -1175,9 +1160,16 @@ func buildFleetChip(fv FleetAccountView, family string, chipStyle int, isTopSwap
 		}
 		if chipStyle >= 2 {
 			g = append(g, span{text: " ", style: padStyle()})
-			g = append(g, renderLaserBarOnBg(fv.PrimaryPct, 3, pctCol, bg, false, frame, th)...)
+			g = append(g, renderLaserBarOnBg(fv.PrimaryPct, 3, pctCol, bg, false, th)...)
 		}
-		g = append(g, span{text: fmt.Sprintf(" %.0f%%", math.Round(fv.PrimaryPct)), style: styleFn(pctCol, isTopSwap, false)})
+		if fv.Stale {
+			g = append(g,
+				span{text: " ~", style: styleFn(th.p.Dim, false, false)},
+				span{text: fmt.Sprintf("%.0f%%", math.Round(fv.PrimaryPct)), style: styleFn(pctCol, isTopSwap, false)},
+			)
+		} else {
+			g = append(g, span{text: fmt.Sprintf(" %.0f%%", math.Round(fv.PrimaryPct)), style: styleFn(pctCol, isTopSwap, false)})
+		}
 
 	case "partial":
 		g = append(g, span{text: "◐", style: styleFn(th.p.Amber, false, false)})
@@ -1322,9 +1314,6 @@ func bucketRemainingPct(b QuotaBucket) float64 {
 }
 
 func bucketResetSeconds(b QuotaBucket, now time.Time) (int64, bool) {
-	if b.ResetInSeconds != nil {
-		return *b.ResetInSeconds, true
-	}
 	if b.ResetTime != nil && strings.TrimSpace(*b.ResetTime) != "" {
 		if ts, ok := parseTimestamp(*b.ResetTime); ok {
 			sec := int64(ts.Sub(now).Seconds())
@@ -1333,6 +1322,9 @@ func bucketResetSeconds(b QuotaBucket, now time.Time) (int64, bool) {
 			}
 			return sec, true
 		}
+	}
+	if b.ResetInSeconds != nil {
+		return *b.ResetInSeconds, true
 	}
 	return 0, false
 }

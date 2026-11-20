@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const fleetStaleAfter = 15 * time.Minute
+
 // ActiveFamily classifies the current model into "3p" (Claude/GPT) or "gemini".
 func ActiveFamily(model *ModelInfo) string {
 	if model == nil {
@@ -149,6 +151,12 @@ func LoadAgySwapInfo(
 		if fv.Status == "ready" {
 			out.ReadyReserves++
 		}
+		if fv.Stale {
+			out.StaleFleetCount++
+		}
+		if fv.AgeSeconds > out.OldestFleetAgeSec {
+			out.OldestFleetAgeSec = fv.AgeSeconds
+		}
 		out.Fleet = append(out.Fleet, fv)
 	}
 
@@ -171,17 +179,21 @@ func buildFleetAccountView(
 	var buckets map[string]QuotaBucket
 	var snapObs time.Time
 	hasSnapObs := false
+	var effectiveObs time.Time
+	hasEffectiveObs := false
 
 	if acc.QuotaSnapshot != nil {
 		tier = parseTierLabel(acc.QuotaSnapshot.Tier)
 		buckets = snapshotToBuckets(acc.QuotaSnapshot, now)
 		snapObs, hasSnapObs = parseTimestamp(acc.QuotaSnapshot.ObservedAt)
+		effectiveObs, hasEffectiveObs = snapObs, hasSnapObs
 	}
 
 	if cached, ok := fleetCache[strings.ToLower(strings.TrimSpace(email))]; ok && len(cached.Quota) > 0 {
 		cacheObs, hasCacheObs := parseTimestamp(cached.ObservedAt)
 		if !hasSnapObs || (hasCacheObs && cacheObs.After(snapObs)) {
-			buckets = normalizeCachedBuckets(cached.Quota, now)
+			buckets = normalizeCachedBuckets(cached.Quota, cacheObs, hasCacheObs, now)
+			effectiveObs, hasEffectiveObs = cacheObs, hasCacheObs
 			if tier == "" && cached.Tier != "" {
 				tier = cached.Tier
 			}
@@ -192,6 +204,12 @@ func buildFleetAccountView(
 		Email: email,
 		Alias: alias,
 		Tier:  tier,
+	}
+	if hasEffectiveObs {
+		if age := now.Sub(effectiveObs); age > 0 {
+			view.AgeSeconds = int64(age.Seconds())
+			view.Stale = age >= fleetStaleAfter
+		}
 	}
 
 	if strings.TrimSpace(acc.SecretRef) == "" {
@@ -242,7 +260,7 @@ func buildFleetAccountView(
 	return view
 }
 
-func normalizeCachedBuckets(raw map[string]QuotaBucket, now time.Time) map[string]QuotaBucket {
+func normalizeCachedBuckets(raw map[string]QuotaBucket, observedAt time.Time, hasObserved bool, now time.Time) map[string]QuotaBucket {
 	out := make(map[string]QuotaBucket, len(raw))
 	for k, b := range raw {
 		if b.Disabled || b.RemainingFraction == nil {
@@ -250,11 +268,18 @@ func normalizeCachedBuckets(raw map[string]QuotaBucket, now time.Time) map[strin
 			continue
 		}
 		if b.ResetTime != nil {
-			if ts, ok := parseTimestamp(*b.ResetTime); ok && !ts.After(now) {
-				one := 1.0
-				zero := int64(0)
-				b.RemainingFraction = &one
-				b.ResetInSeconds = &zero
+			if ts, ok := parseTimestamp(*b.ResetTime); ok {
+				if !ts.After(now) {
+					if !hasObserved || ts.After(observedAt) {
+						one := 1.0
+						b.RemainingFraction = &one
+					}
+					zero := int64(0)
+					b.ResetInSeconds = &zero
+				} else {
+					sec := int64(ts.Sub(now).Seconds())
+					b.ResetInSeconds = &sec
+				}
 			}
 		}
 		out[k] = b
@@ -396,6 +421,7 @@ func snapshotToBuckets(snap *agySwapQuotaSnapshot, now time.Time) map[string]Quo
 	if snap == nil {
 		return nil
 	}
+	obs, hasObs := parseTimestamp(snap.ObservedAt)
 	out := make(map[string]QuotaBucket)
 	for _, grp := range snap.Groups {
 		for _, b := range grp.Buckets {
@@ -410,7 +436,9 @@ func snapshotToBuckets(snap *agySwapQuotaSnapshot, now time.Time) map[string]Quo
 				iso := ts.UTC().Format(time.RFC3339)
 				resetTimePtr = &iso
 				if !ts.After(now) {
-					frac = 1.0
+					if !hasObs || ts.After(obs) {
+						frac = 1.0
+					}
 					zero := int64(0)
 					resetInPtr = &zero
 				} else {
